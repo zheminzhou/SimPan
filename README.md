@@ -2,12 +2,14 @@
 A simulator of pan-genome for bacterial population
 
 SimPan runs in Python with versions >= 3.5 and requires two libraries:
-```numpy
+```
+numpy
 ete3
 ```
 
 SimPan also depends on two published simulators:
-```SimBac
+```
+SimBac
 indel-seq-gen
 ```
 
@@ -22,7 +24,8 @@ In brief, SimPan
 
 Note that indel-seq-gen can be very slow. If you are only interested in the gene content, use '--noSeq' as an early stop. 
 
-```$ python SimPan.py -h
+```
+$ python SimPan.py -h
 usage: SimPan.py [-h] [-p PREFIX] [--genomeNum GENOMENUM] [--geneLen GENELEN]
                  [--igrLen IGRLEN] [--backboneBlock BACKBONEBLOCK]
                  [--mobileBlock MOBILEBLOCK] [--operonBlock OPERONBLOCK]
