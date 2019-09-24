@@ -24,6 +24,54 @@ In brief, SimPan
 
 Note that indel-seq-gen can be very slow. If you are only interested in the gene content, use '--noSeq' as an early stop. 
 
+## EXAMPLE:
+Use
+```
+python SimPan.py --aveSize 50 --nBackbone 30 --nMobile 1000 -p test --genomeNum 10
+```
+To simulate 10 genomes with average of 50 genes each. 
+
+### OUTPUTS:
+#### test.gene.content.tsv
+```
+#ID     0       1       2       3       4       5       6       7       8       9
+1       28_0    28_0    28_0    28_0    28_0    28_0    28_0    28_0    28_0    28_0
+2       5_0     5_0     5_0     5_0     5_0     5_0     5_0     5_0     5_0     5_0
+3       -       -       -       -       -       -       128_0   -       -       -
+4       -       -       -       -       -       -       719_0   -       -       -
+5       -       -       -       -       -       -       53_0    -       -       -
+6       -       -       -       -       -       -       492_0   -       -       -
+7       8_0     8_0     8_0     8_0     8_0     8_0     8_0     8_0     8_0     8_0
+```
+Each column except for the first one shows one simulated genome. Each row shows one gene. "-" are missing genes. The gene names suggest their homologous groups and orthologous sub-groups. e.g., 28_0 and 5_0 are in different homologous groups and thus unlikely to be similar, whereas 28_0 and 28_1 belongs to the same homologous group but in different orthologous sub-group. They are distantly related. 
+
+#### test.aligned.fasta
+This is a multi-sequence alignment of all the simulated genomes. 
+
+#### test.aligned.tbl
+```
+61      120     -       28      0
+236     295     -       5       0
+416     475     -       128     0
+510     569     -       719     0
+651     710     +       53      0
+774     833     -       492     0
+```
+This file show the coordinates of genes in the genomic alignment (test.aligned.fasta). The five columns are:
+
+1. start site
+2. end site
+3. direction
+4. homologous group designation
+5. orthologous sub-group designation
+
+#### test_0.gff, test_1.gff, test_2.gff, ...
+The gene annotation file for simulated genomes in GFF3 format
+
+#### test_0.fna & test_0.tbl
+The source files for tbl2asn tool from NCBI. GBK file can be generated using these files. 
+
+## USAGE:
 ```
 $ python SimPan.py -h
 usage: SimPan.py [-h] [-p PREFIX] [--genomeNum GENOMENUM] [--geneLen GENELEN]
