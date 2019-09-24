@@ -3,11 +3,13 @@ A simulator of pan-genome for bacterial population
 
 SimPan runs in Python with versions >= 3.5 and requires two libraries:
 ```numpy
-ete3```
+ete3
+```
 
 SimPan also depends on two published simulators:
 ```SimBac
-indel-seq-gen```
+indel-seq-gen
+```
 
 Binary files for both dependencies have also been distributed here. Both are compiled in Ubuntu 16.04. 
 If they can not run in your system, or if you prefer a different version of these dependencies, please put the binary files in your environment variable PATH. SimPan will find and use them. 
