@@ -1,5 +1,8 @@
 # SimPan
-A simulator of pan-genome for bacterial population
+A simulator of pan-genome for bacterial population. 
+
+* SimPan simulates whole genomic sequences rather than only genes. 
+* SimPan implements different evolutionary model for core-genome and accessory genomes. 
 
 SimPan runs in Python with versions >= 3.5 and requires two libraries:
 
