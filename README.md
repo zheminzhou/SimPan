@@ -16,7 +16,7 @@ usage: SimPan.py [-h] [-p PREFIX] [--genomeNum GENOMENUM] [--geneLen GENELEN]
                  [--freqStop FREQSTOP]
 
 SimPan is a simulator for bacterial pan-genome.
-Global phylogeny and tree distortions are derived from SimBac and the gene and intergenic sequences are simulated using INDELile.
+Global phylogeny and tree distortions are derived from SimBac and the gene and intergenic sequences are simulated using indel-seq-gen.
 
 optional arguments:
   -h, --help            show this help message and exit
