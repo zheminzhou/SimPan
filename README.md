@@ -1,6 +1,25 @@
 # SimPan
 A simulator of pan-genome for bacterial population
 
+SimPan runs in Python with versions >= 3.5 and requires two libraries:
+```numpy
+ete3```
+
+SimPan also depends on two published simulators:
+```SimBac
+indel-seq-gen```
+
+Binary files for both dependencies have also been distributed here. Both are compiled in Ubuntu 16.04. 
+If they can not run in your system, or if you prefer a different version of these dependencies, please put the binary files in your environment variable PATH. SimPan will find and use them. 
+
+In brief, SimPan 
+
+1. Uses SimBac to simulate a global phylogeny and recombination events of the bacterial genomes.
+2. Generate gene contents for both core- and accessory genomes by random indel events. 
+3. Uses indel-seq-gen to fill in sequences for these pan genes. 
+
+Note that indel-seq-gen can be very slow. If you are only interested in the gene content, use '--noSeq' as an early stop. 
+
 ```$ python SimPan.py -h
 usage: SimPan.py [-h] [-p PREFIX] [--genomeNum GENOMENUM] [--geneLen GENELEN]
                  [--igrLen IGRLEN] [--backboneBlock BACKBONEBLOCK]
