@@ -6,8 +6,8 @@ def rc(seq, missingValue='N') :
     return ''.join([complement.get(s, missingValue) for s in reversed(seq.upper())])
 
 externals = {
-    'simbac' : shutil.which('SimBac') if shutil.which('SimBac') else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'SimBac'),
-    'indel-seq-gen' : shutil.which('indel-seq-gen') if shutil.which('indel-seq-gen') else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'indel-seq-gen'),
+    'simbac' : shutil.which('SimBac') if shutil.which('SimBac') else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dependencies', 'SimBac'),
+    'indel-seq-gen' : shutil.which('indel-seq-gen') if shutil.which('indel-seq-gen') else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dependencies', 'indel-seq-gen'),
 }
 
 def getEvent(trees, tipAcc, num) :
@@ -260,7 +260,7 @@ def getOrthoTree(trees, distOrtholog, postfix, strand, s, e, t, v, i0=0) :
     for r, i, j in ((res[0], s, e), (res[1], e, t), (res[2], t, v)) :
         while trees[i0][0] <= i :
             i0 += 1
-        for m in xrange(i0, len(trees)) :
+        for m in range(i0, len(trees)) :
             tree = trees[m]
             i1, j1 = max(tree[0]-tree[1], i), min(tree[0], j)
             if j1 - i1 > 0 :
@@ -368,8 +368,8 @@ def getHomoSequence(prefix, homologs, homologTree, indelRate, indelMax, freqStar
             for ge in results :
                 for go in results[ge] :
                     results[ge][go].append('')
-    #for fname in glob.glob('{0}.{1}.*'.format(prefix, region)) :
-        #os.unlink(fname)
+    for fname in glob.glob('{0}.*'.format(prefix, region)) :
+        os.unlink(fname)
 
     starts = np.unique([v[1].replace('-', '')[:3] for gene_seq in results.values() for v in gene_seq.values()], return_counts=True)
     starts = starts[0][np.argsort(-starts[1])]
@@ -523,7 +523,7 @@ def genomeSim(a) :
     parser = argparse.ArgumentParser(description='''SimPan is a simulator for bacterial pan-genome. 
 Global phylogeny and tree distortions are derived from SimBac and the gene and intergenic sequences are simulated using INDELile.''', formatter_class=argparse.RawTextHelpFormatter)
 
-    parser.add_argument('-p', '--prefix', help='prefix for all intermediate files and outputs', default='EToKi_genomeSim')
+    parser.add_argument('-p', '--prefix', help='prefix for all intermediate files and outputs. {DEFAULT: SimPan]', default='SimPan')
     parser.add_argument('--genomeNum', help='No of genome in population [DEFAULT: 20]', default=20, type=int)
 
     parser.add_argument('--geneLen', help='[negative bionomial with r=2] mean,min,max sizes of genes [DEFAULT: 900,150,6000]', default='900,150,6000')
