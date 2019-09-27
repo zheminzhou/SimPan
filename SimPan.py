@@ -396,7 +396,8 @@ def getHomoSequence(prefix, homologs, homologTree, indelRate, indelMax, freqStar
     neg_strand = set(homologs[homologs.T[1] == -1, 0])    
     for gene, genomes in results.items() :
         for genome, seq in genomes.items() :
-            seq[1] = re.sub(r'(.{3})(-*)$', lambda g:g.group(2) + stopConvs[g.group(1)], re.sub(r'^(-*)(.{3})', lambda g:startConvs[g.group(2)] + g.group(1), seq[1]))
+            seq[1] = re.sub(r'([^-])(-*)([^-])(-*)([^-])(-*)$', lambda g:g.group(2)+g.group(4)+g.group(6) + stopConvs[g.group(1)+g.group(3)+g.group(5)], \
+                            re.sub(r'^(-*)([^-])(-*)([^-])(-*)([^-])', lambda g:startConvs[g.group(2)+g.group(4)+g.group(6)] + g.group(1)+g.group(3)+g.group(5), seq[1]))
             if gene in neg_strand :
                 seq = [ rc(s, '-') for s in seq[::-1] ]
             m, n, k, m0, n0, k0 = len(seq[0]), len(seq[1]), len(seq[2]), len(seq[0].replace('-', '')), len(seq[1].replace('-', '')), len(seq[2].replace('-', ''))
