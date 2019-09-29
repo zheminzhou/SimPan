@@ -1,4 +1,5 @@
 import subprocess, sys, os, numpy as np, ete3, re, glob, shutil
+import tempfile
 from multiprocessing import Pool
 
 complement = {'A':'T', 'T':'A', 'G':'C', 'C':'G', 'N':'N'}
@@ -7,7 +8,7 @@ def rc(seq, missingValue='N') :
 
 externals = {
     'simbac' : shutil.which('SimBac') if shutil.which('SimBac') else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dependencies', 'SimBac'),
-    'indel-seq-gen' : shutil.which('indel-seq-gen') if shutil.which('indel-seq-gen') else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dependencies', 'indel-seq-gen'),
+    'indelible' : shutil.which('indelible') if shutil.which('indelible') else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dependencies', 'indelible'),
 }
 
 def getEvent(trees, tipAcc, num) :
@@ -38,7 +39,7 @@ def annotateTree(tree) :
     return tree
 
 def indelTree(tree, tipAccelerate) :
-    lmbda = np.log(tipAccelerate)#/tree.height    
+    lmbda = np.log(tipAccelerate) 
     for node in tree.traverse('postorder') :
         node.dist = lmbda*abs(np.exp(-lmbda*node.height) - np.exp(-lmbda*(node.height+node.dist)))
 
@@ -320,56 +321,69 @@ def getHomologTree(prefix, homologs, trees, distOrtholog, distParalog, distDupli
         homoTree = list(orthoTrees.values())[0]
     return homoTree
 
-def getHomoSequence(prefix, homologs, homologTree, indelRate, indelMax, freqStart, freqStop) :
+controls = dict(cds='''[TYPE] CODON 1
+[MODEL] m1
+[submodel] 2.5 0.3
+[indelmodel] NB {indelLen} 1
+[geneticcode] 11
+[indelrate]   {indelRate}
+
+{trees}
+
+[PARTITIONS] seq
+{partitions}
+
+[EVOLVE] seq 1 seq
+''', 
+               igr='''[TYPE] NUCLEOTIDE 1
+[MODEL] m1
+[submodel] HKY 2.5
+[statefreq] 0.25 0.25 0.25 0.25
+[indelmodel] NB {indelLen} 1
+[indelrate]   {indelRate}
+
+{trees}
+
+[PARTITIONS] seq
+{partitions}
+
+[EVOLVE] seq 1 seq
+''')
+
+def getHomoSequence_indelible(prefix, homologs, homologTree, indelRate, indelLen, freqStart, freqStop) :
     tips = [int(t.split('_')[0])-1 for t in homologTree[1][0][1].get_leaf_names()]
     results = { homolog:{t:[] for t in tips} for homolog in homologs.T[0] }
-    for region, treeBlock in zip(['igr', 'cds', 'igr'], homologTree) :
-        if region == 'cds' :
-            for i, (w, t) in reversed(list(enumerate(treeBlock))) :
-                if w % 3 > 0 :
-                    if i > 0 :
-                        if w % 3 == 1 :
-                            treeBlock[i-1][0] += 1
-                        else :
-                            treeBlock[i-1][0] -= 1
-                    if w % 3 == 1 :
-                        treeBlock[i][0] -= 1
-                    else :
-                        treeBlock[i][0] += 1
-        for i, (w, t) in reversed(list(enumerate(treeBlock))) :
-            if w <= 1 :
-                if i > 0 :
-                    treeBlock[i-1][0] += w
-                elif i < len(treeBlock) - 1 :
-                    treeBlock[i+1][0] += w
-                treeBlock[i:i+1] = []
-        if len(treeBlock) :
-            codon = '' if region == 'igr' else '-c 2,1,8'
-            x = subprocess.Popen('{indel-seq-gen} -m HKY -e {0} {2} -m HKY -o p -u sp'.format(\
-                prefix, region, codon, **externals
-                ).split(), universal_newlines=True, stderr=subprocess.PIPE, \
-                             stdin=subprocess.PIPE).communicate(\
-                                 input='\n'.join(['[{0}]{{{2},{3}/{3},seqgen.{4}.indel}}{1}'.format(tree[0], tree[1].write(format=1, dist_formatter='%0.12f'),\
-                                                                                       indelMax, indelRate/2, region
-                                                                                       ) for tree in treeBlock])+'\n'\
-                             )
-            with open('{0}.ma'.format(prefix, region)) as fin :
-                fin.readline()
-                for line in fin :
-                    part = line.strip().split()
-                    if len(part) > 1 :
-                        n, s = part
-                        go, ge = np.array(n.split('_'), dtype=int)
-                        if go-1 not in results[ge] :
-                            results[ge][go-1] = [s]
-                        else :
-                            results[ge][go-1].append(s)
-        else :
-            for ge in results :
-                for go in results[ge] :
-                    results[ge][go].append('')
-    for fname in glob.glob('{0}.*'.format(prefix, region)) :
-        os.unlink(fname)
+    with tempfile.TemporaryDirectory(prefix=prefix, dir='.') as tmpdirname:
+        for region, treeBlock in zip(['igr', 'cds', 'igr'], homologTree) :
+            trees = [ ['t{0}'.format(id), tre[1].write(format=1, dist_formatter='%0.12f')] for id, tre in enumerate(treeBlock) ]
+            partitions = [ ['t{0}'.format(id), tre[0] if region == 'igr' else int(tre[0]/3+0.5)] for id, tre in enumerate(treeBlock) ]
+            for pId, p in reversed(list(enumerate(partitions))) :
+                if p[1] == 0 :
+                    del trees[pId]
+                    del partitions[pId]
+            if len(trees) :
+                control = controls[region].format(indelLen=(1. - 1./indelLen), indelRate=indelRate, \
+                                                      trees='\n'.join(['[TREE] {0} {1}'.format(*tree) for tree in trees]), \
+                                                      partitions='\n'.join(['  [{0} m1 {1}]'.format(*partition) for partition in partitions]) )
+                with open(os.path.join(tmpdirname, 'control.txt'), 'w') as fout :
+                    fout.write(control)
+                subprocess.Popen([externals['indelible']], stdout=subprocess.PIPE, cwd=tmpdirname).communicate()
+                seq = {}
+                with open(os.path.join(tmpdirname, 'seq_TRUE.phy')) as fin :
+                    fin.readline()
+                    for line in fin :
+                        part = line.strip().split()
+                        if len(part) > 1 :
+                            n, s = part
+                            go, ge = np.array(n.split('_'), dtype=int)
+                            if go-1 not in results[ge] :
+                                results[ge][go-1] = [s]
+                            else :
+                                results[ge][go-1].append(s)
+            else :
+                for ge in results :
+                    for go in results[ge] :
+                        results[ge][go].append('')
 
     starts = np.unique([v[1].replace('-', '')[:3] for gene_seq in results.values() for v in gene_seq.values()], return_counts=True)
     starts = starts[0][np.argsort(-starts[1])]
@@ -396,15 +410,17 @@ def getHomoSequence(prefix, homologs, homologTree, indelRate, indelMax, freqStar
     neg_strand = set(homologs[homologs.T[1] == -1, 0])    
     for gene, genomes in results.items() :
         for genome, seq in genomes.items() :
-            seq[1] = re.sub(r'([^-])(-*)([^-])(-*)([^-])(-*)$', lambda g:g.group(2)+g.group(4)+g.group(6) + stopConvs[g.group(1)+g.group(3)+g.group(5)], \
-                            re.sub(r'^(-*)([^-])(-*)([^-])(-*)([^-])', lambda g:startConvs[g.group(2)+g.group(4)+g.group(6)] + g.group(1)+g.group(3)+g.group(5), seq[1]))
+            seq[1] = re.sub(r'(.{3})(-*)$', lambda g:g.group(2) + stopConvs[g.group(1)], re.sub(r'^(-*)(.{3})', lambda g:startConvs[g.group(2)] + g.group(1), seq[1]))
             if gene in neg_strand :
                 seq = [ rc(s, '-') for s in seq[::-1] ]
             m, n, k, m0, n0, k0 = len(seq[0]), len(seq[1]), len(seq[2]), len(seq[0].replace('-', '')), len(seq[1].replace('-', '')), len(seq[2].replace('-', ''))
             genomes[genome] = [''.join(seq), m+1, m+n, m+n+k, m0+1, m0+n0, m0+n0+k0, -1 if gene in neg_strand else 1]
     return results
 
-def getSequences(prefix, genomes, items, operonBlock, trees, idenOrtholog, idenParalog, idenDuplication, indelRate, indelMax, freqStart, freqStop) :
+
+
+
+def getSequences(prefix, genomes, items, operonBlock, trees, idenOrtholog, idenParalog, idenDuplication, indelRate, indelLen, freqStart, freqStop) :
     distOrtholog = -3./4.*np.log(1.-4./3.*(1.-idenOrtholog))/2.
     distParalog = -3./4.*np.log(1.-4./3.*(1.-idenParalog))/2. - distOrtholog
     distDuplication = -3./4.*np.log(1.-4./3.*(1.-idenDuplication))/2.
@@ -422,17 +438,14 @@ def getSequences(prefix, genomes, items, operonBlock, trees, idenOrtholog, idenP
     genes = np.hstack([genes, np.concatenate([[0], sites[:-1, -1]])[:, np.newaxis], sites])
     
     alignments, genome_seqs, annotations, archives = [ [] for g in np.arange(genomes.shape[1]) ], [ [] for g in np.arange(genomes.shape[1]) ], [ [] for g in np.arange(genomes.shape[1]) ], {}
-    with open('seqgen.igr.indel', 'w') as fout :
-        fout.write('2627.66769806,743.784419906488,355.480238119831,210.534712476797,140.238546142805,100.621803469817,75.9965040586087,59.5936994260522,48.0906317747209,39.6957521563191,33.3714549098946,28.4818852014648,24.6191452491735,21.5114779269409,18.9719696342231,16.8685200150737,15.1055503871874,13.6124756885757,12.3362203381659,11.2362312830263,10.2810775422532,9.44608340313232,8.71165041315475,8.06204775362389,7.48452699660906,6.96866528490998,6.50587182208479,6.08901275569724,5.71212299608529,5.37018262974892,5.05894185533674,4.77478274111892,4.51460918994168,4.27575870434353,4.05593113961235,3.85313079770075,3.66561907437647,3.49187551182199,3.33056558937959,3.1805139489103,3.0406820287779,2.91014929377263,2.78809741335811,2.67379686920619,2.56659557376873,2.46590916110141,2.37121267416572,2.28203342306742,2.19794482894246,2.11856110061303,2.04353261735985,1.97254191246708,1.90530016958954,1.84154415824645,1.78103354647507,1.72354853836471,1.66888779222258,1.61686658180352,1.56731516861245,1.52007735795841,1.47500921536305,1.4319779232322,1.39086076049377,1.35154419027362,1.31392304269358,1.27789978159125,1.24338384542653,1.21029105389477,1.17854307284416,1.14806693102194,1.11879458297388,1.09066251311289,1.06361137657111,1.03758567297005,1.01253344969503,0.988406031654495,0.965157774848733,0.942745841373371,0.921129993746859,0.900272406682654,0.880137494630415,0.860691753589846,0.841903615859037,0.823743316519059,0.806182770580176,0.78919545982484,0.772756328479934,0.756841686937273,0.741429122818457,0.726497418748777,0.712026476266241,0.697997245346518,0.684391659073637,0.671192573030209,0.658383709020344,0.645949602773805,0.633875555311786,0.622147587683329,0.610752398807241,0.599677326177617,0.58891030921216,0.578439855041472,0.568255006554736,0.558345312532765,0.548700799713571,0.539311946648411,0.530169659217982,0.521265247688958,0.512590405200812,0.504137187581589,0.495897994399363,0.487865551163388,0.480032892595684,0.472393346899888,0.464940520959775,0.457668286405011,0.450570766486371,0.443642323706956,0.436877548159893,0.430271246526647,0.423818431693374,0.417514312945853,0.411354286706303,0.405333927778046,0.39944898106635,0.393695353745956,0.388069107847919,0.382566453240197,0.377183740978193,0.37191745700308,0.366764216167198,0.361720756567208,0.356783934166972,0.351950717693281,0.347218183788694,0.342583512406741,0.338043982435683,0.333596967537936,0.329239932193047,0.324970427932885,0.320786089758426,0.316684632728148,0.312663848708688,0.308721603278961,0.304855832779504,0.301064541499273,0.297345798992609,0.293697737519508,0.290118549602749,0.286606485695794,0.283159851955747,0.279777008115973,0.276456365453306,0.273196384845048,0.269995574911242,0.266852490237955,0.263765729677552,0.260733934722148,0.257755787946661,0.254830011518064,0.25195536576763,0.249130647823143,0.24635469029819,0.243626360035843,0.240944556904132,0.238308212640893,0.235716289745684,0.233167780416573,0.230661705529731,0.228197113659875,0.225773080139685,0.223388706156424,0.221043117884104,0.21873546564958,0.216464923131075,0.21423068658769,0.212031974118538,0.209868024950204,0.207738098751289,0.205641474972868,0.203577452213756,0.201545347609496,0.199544496244073,0.19757425058339,0.195633979929586,0.193723069895309,0.19184092189714,0.189986952667338,0.188160593783181,0.186361291213162,0.18458850487935,0.182841708235274,0.181120387858689,0.179424043058626,0.177752185496167,0.176104338818378,0.174480038304898,0.172878830526678,0.171300273016381,0.169743933950018,0.168209391839349,0.166696235234656,0.165204062437485,0.16373248122297,0.162281108571374,0.160849570408511,0.159437501354692,0.158044544481898,0.156670351078856,0.155314580423733,0.153976899564159,0.152656983104326,0.15135451299887,0.150069178353336,0.14880067523094,0.147548706465428,0.146312981479816,0.145093216110773,0.143889132438476,0.142700458621727,0.141526928738149,0.140368282629282,0.139224265750408,0.138094629024942,0.136979128703231,0.135877526225601,0.134789588089517,0.133715085720704,0.132653795348108,0.131605497882552,0.130569978798971,0.1295470280221,0.128536439815511,0.127538012673867,0.126551549218306,0.125576856094842,0.124613743875682,0.123662026963371,0.122721523497662,0.121792055265032,0.120873447610757,0.119965529353452,0.119068132702017,0.118181093174894,0.117304249521565,0.116437443646235,0.115580520533605,0.114733328176693,0.113895717506622,0.11306754232433,0.112248659234118,0.111438927579011,0.110638209377844,0.109846369264042,0.109063274426035,0.108288794549258,0.107522801759683,0.106765170568846,0.106015777820322,0.105274502637592,0.104541226373283,0.103815832559718,0.10309820686075,0.102388237024838,0.101685812839328,0.100990826085908,0.100303170497194,0.0996227417144249,0.0989494372462204,0.0982831564283899,0.0976238003847422,0.0969712719888816,0.0963254758269547,0.095686318161324,0.095053706895142,0.0944275515377979,0.0938077631712138,0.0931942544169696,0.092586939404226,0.0919857337384313,0.0913905544707846,0.0908013200684377,0.0902179503854141,0.0896403666342237,0.0890684913581586,0.0885022484042469,0.0879415628968477,0.0873863612118733,0.0868365709516161,0.0862921209201679,0.0857529410994147,0.0852189626255917,0.0846901177663816,0.0841663398985463,0.083647563486072,0.0831337240588201,0.0826247581916649,0.0821206034841111,0.0816211985403725,0.081126482949906')
-    with open('seqgen.cds.indel', 'w') as fout :
-        fout.write('0,0,3726.93235608632,0,0,451.395062089419,0,0,183.680835259382,0,0,101.549092267679,0,0,65.1025928103375,0,0,45.5865460908368,0,0,33.8535291634455,0,0,26.219781569911,0,0,20.9590641036038,0,0,17.1713183815315,0,0,14.3483337863973,0,0,12.1848206416566,0,0,10.488060175578,0,0,9.13134527146083,0,0,8.02848985633303,0,0,7.11915525833455,0,0,6.36003854691535,0,0,5.71938624030307,0,0,5.17346987706236,0,0,4.70425910837438,0,0,4.29784789908902,0,0,3.94336701455846,0,0,3.63221797216546,0,0,3.35752402710871,0,0,3.1137304992362,0,0,2.8963096478766,0,0,2.70153989505993,0,0,2.52633868596794,0,0,2.36813455888495,0,0,2.22476822850451,0,0,2.0944153806864,0,0,1.97552588482436,0,0,1.86677554180236,0,0,1.76702749043125,0,0,1.67530111880107,0,0,1.59074685355535,0,0,1.51262558718176,0,0,1.44029179065896,0,0,1.37317957385116,0,0,1.3107911183935,0,0,1.25268703134553,0,0,1.19847826259035,0,0,1.14781930206631,0,0,1.10040242973749,0,0,1.05595283564895,0,0,1.01422446238036,0,0,0.974996449884357,0,0,0.938070084715798,0,0,0.903266173271386,0,0,0.870422772818051,0,0,0.839393225525025,0,0,0.810044449994245,0,0,0.782255452346362,0,0,0.755916025108837,0,0,0.730925607238165,0,0,0.70719228280315,0,0,0.684631899329291,0,0,0.663167289690108,0,0,0.642727583837302,0,0,0.623247598674361,0,0,0.604667296067325,0,0,0.586931300408285,0,0,0.569988468347658,0,0,0.553791504327786,0,0,0.538296616413482,0,0,0.523463207649954,0,0,0.509253598805748,0,0,0.495632778895111,0,0,0.482568180334576,0,0,0.470029475984486,0,0,0.457988395667355,0,0,0.446418560049704,0,0,0.435295330029065,0,0,0.424595669989159,0,0,0.414298023478581,0,0,0.404382200035822,0,0,0.394829272029631,0,0,0.385621480511478,0,0,0.376742149188829,0,0,0.368175605726065,0,0,0.359907109666226,0,0,0.351922786342694,0,0,0.34420956621692,0,0,0.336755129137459,0,0,0.329547853067921,0,0,0.322576766877788,0,0,0.315831506831196,0,0,0.309302276445306,0,0,0.30297980942243,0,0,0.296855335389035,0,0,0.290920548200579,0,0,0.285167576594264,0,0,0.279588956992409,0,0,0.274177608277653,0,0,0.268926808377796,0,0,0.263830172512968,0,0,0.258881632971199,0,0,0.25407542029052,0,0,0.249406045736557,0,0,0.24486828497439')
     for gId, gene in enumerate(genes) :
         print(gId, gene)
         if gId not in archives :
             homologs = genes[(genes.T[3]/10).astype(int) == (gene[3]/10).astype(int)]
             homologTree = getHomologTree(prefix, np.random.permutation(homologs), trees, distOrtholog, distParalog, distDuplication)
-            homologSeq = getHomoSequence('{0}.gene.{1}'.format(prefix, gId), homologs, homologTree, indelRate, indelMax, freqStart, freqStop)
+            homologSeq = getHomoSequence_indelible('{0}.gene.{1}_'.format(prefix, gId), homologs, homologTree, indelRate, indelLen, freqStart, freqStop)
             archives.update(homologSeq)
+
         gene_seqs = archives.pop(gId)
         gene_stat = genomes[gId]
         for genomeId, gseq in gene_seqs.items() :
@@ -515,7 +528,7 @@ def runGenomeSim(args) :
     
     if not args.noSeq :
         # simulate sequences
-        alignments, genome_seqs, annotations = getSequences(args.prefix, genomes, items, args.operonBlock, seqtrees, args.idenOrtholog, args.idenParalog, args.idenDuplication, args.indelRate, args.indelMax, args.freqStart, args.freqStop)
+        alignments, genome_seqs, annotations = getSequences(args.prefix, genomes, items, args.operonBlock, seqtrees, args.idenOrtholog, args.idenParalog, args.idenDuplication, args.indelRate, args.indelLen, args.freqStart, args.freqStop)
         # output
         writeOut(args.prefix, alignments, genome_seqs, annotations)
 
@@ -554,8 +567,8 @@ Global phylogeny and tree distortions are derived from SimBac and the gene and i
     parser.add_argument('--idenParalog', help='average nucleotide identities for paralogous genes. [DEFAULT: 0.6]', default=0.6, type=float)
     parser.add_argument('--idenDuplication', help='average nucleotide identities for recent gene duplications. [DEFAULT: 0.995]', default=0.995, type=float)
     
-    parser.add_argument('--indelRate', help='summarised average frequency of indel events. [DEFAULT: 0.01]', default=0.01, type=float)
-    parser.add_argument('--indelMax', help='maximum size of short indel events within each gene (<=300). [DEFAULT: 30]', default=30, type=float)
+    parser.add_argument('--indelRate', help='average frequency of indel events relative to mutation rates. [DEFAULT: 0.01]', default=0.01, type=float)
+    parser.add_argument('--indelLen', help='average size of short indel events within each gene. [DEFAULT: 10]', default=10, type=float)
     parser.add_argument('--freqStart', help='frequencies of start codons of ATG,GTG,TTG. DEFAULT: 0.83,0.14,0.03', default='0.83,0.14,0.03')
     parser.add_argument('--freqStop', help='frequencies of stop codons of TAA,TAG,TGA. DEFAULT: 0.63,0.08,0.29', default='0.63,0.08,0.29')
 

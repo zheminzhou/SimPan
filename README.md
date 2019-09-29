@@ -13,7 +13,7 @@ SimPan runs in Python with versions >= 3.5 and requires two libraries:
 SimPan also depends on two published simulators:
 
 * [SimBac](https://github.com/tbrown91/SimBac)
-* [indel-seq-gen](http://bioinfolab.unl.edu/~cstrope/iSG/)
+* [indelible](http://abacus.gene.ucl.ac.uk/software/indelible/)
 
 
 Binary files for both dependencies have also been distributed in this repository. Both are compiled in Ubuntu 16.04. 
@@ -23,9 +23,9 @@ In brief, SimPan
 
 1. Uses SimBac to simulate a global phylogeny and recombination events of the bacterial genomes.
 2. Generate gene contents for both core- and accessory genomes by random indel events. 
-3. Uses indel-seq-gen to fill in sequences for these pan genes. 
+3. Uses indelible to fill in sequences for these pan genes. 
 
-Note that indel-seq-gen can be very slow. If you are only interested in the gene content, use '--noSeq' as an early stop. 
+Note that indelible can be very slow. If you are only interested in the gene content, use '--noSeq' as an early stop. 
 
 ## EXAMPLE:
 Use
@@ -87,11 +87,11 @@ usage: SimPan.py [-h] [-p PREFIX] [--genomeNum GENOMENUM] [--geneLen GENELEN]
                  [--insRec INSREC] [--delRec DELREC] [--noSeq]
                  [--idenOrtholog IDENORTHOLOG] [--idenParalog IDENPARALOG]
                  [--idenDuplication IDENDUPLICATION] [--indelRate INDELRATE]
-                 [--indelMax INDELMAX] [--freqStart FREQSTART]
+                 [--indelLen INDELLEN] [--freqStart FREQSTART]
                  [--freqStop FREQSTOP]
 
 SimPan is a simulator for bacterial pan-genome.
-Global phylogeny and tree distortions are derived from SimBac and the gene and intergenic sequences are simulated using indel-seq-gen.
+Global phylogeny and tree distortions are derived from SimBac and the gene and intergenic sequences are simulated using indelible.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -130,8 +130,8 @@ optional arguments:
   --idenDuplication IDENDUPLICATION
                         average nucleotide identities for recent gene duplications. [DEFAULT: 0.995]
   --indelRate INDELRATE
-                        summarised average frequency of indel events. [DEFAULT: 0.01]
-  --indelMax INDELMAX   maximum size of short indel events within each gene (<=300). [DEFAULT: 30]
+                        average frequency of indel events relative to mutation rates. [DEFAULT: 0.01]
+  --indelLen INDELLEN   average size of short indel events within each gene. [DEFAULT:130]
   --freqStart FREQSTART
                         frequencies of start codons of ATG,GTG,TTG. DEFAULT: 0.83,0.14,0.03
   --freqStop FREQSTOP   frequencies of stop codons of TAA,TAG,TGA. DEFAULT: 0.63,0.08,0.29
